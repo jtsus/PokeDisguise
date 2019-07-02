@@ -1,0 +1,20 @@
+[
+  {
+    "modid": "PokeDisguise",
+    "name": "PokeDisguise",
+    "description": "Become one with the pokemane",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": [
+      "Justin"
+    ],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": [
+      "pixelmon"
+    ]
+  }
+]
