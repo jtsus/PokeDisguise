@@ -10,7 +10,7 @@ import org.spongepowered.api.service.permission.PermissionService;
  */
 public class PermissionDisguiseRegistryService implements DisguiseRegistryService {
     @Override
-    public boolean hasDisguise(Player player, PokemonSpec disguise) {
+    public boolean hasDisguise(Player player, String disguise) {
         return player.hasPermission(getPermission(disguise));
     }
 
@@ -18,11 +18,11 @@ public class PermissionDisguiseRegistryService implements DisguiseRegistryServic
     public void save(Player player) {}
 
     @Override
-    public void giveDisguise(Player player, PokemonSpec disguise) {
+    public void giveDisguise(Player player, String disguise) {
         Sponge.getCommandManager().process(Sponge.getServer().getConsole(), "lp user "+player.getName()+" permission set "+getPermission(disguise)+" true");
     }
 
-    private String getPermission(PokemonSpec from) {
-        return "pd."+from.name;
+    private String getPermission(String from) {
+        return "pd."+from.replace(" ", "_");
     }
 }

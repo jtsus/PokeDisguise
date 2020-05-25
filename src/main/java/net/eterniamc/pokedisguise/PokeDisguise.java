@@ -3,6 +3,7 @@ package net.eterniamc.pokedisguise;
 import com.flowpowered.math.vector.Vector3d;
 import com.pixelmonmod.pixelmon.api.pokemon.PokemonBase;
 import com.pixelmonmod.pixelmon.api.pokemon.PokemonSpec;
+import com.pixelmonmod.pixelmon.client.models.smd.AnimationType;
 import com.pixelmonmod.pixelmon.entities.pixelmon.EntityStatue;
 import com.pixelmonmod.pixelmon.enums.EnumBoundingBoxMode;
 import com.pixelmonmod.pixelmon.enums.EnumSpecies;
@@ -71,7 +72,7 @@ public class PokeDisguise {
                         .executor(((src, args) -> {
                             PokemonSpec spec = new PokemonSpec(args.<String>getOne("pokemon").get());
                             Player player = src.hasPermission("pokedisguise.other") ? args.<Player>getOne("player").get() : (Player)src;
-                            if (service.hasDisguise(player, spec) || src.hasPermission("pokedisguise.all")) {
+                            if (service.hasDisguise(player, args.<String>getOne("pokemon").get()) || src.hasPermission("pokedisguise.all")) {
                                 disguise(player, spec);
                             } else
                                 player.sendMessage(Text.of(TextColors.RED, "You don't own this disguise!"));
@@ -89,7 +90,7 @@ public class PokeDisguise {
                                         .executor(((src, args) -> {
                                             service.giveDisguise(
                                                     args.<Player>getOne("player").get(),
-                                                    new PokemonSpec(args.<String>getOne("pokemon").get())
+                                                    args.<String>getOne("pokemon").get()
                                             );
                                             src.sendMessage(Text.of("Disguise has been given"));
                                             return CommandResult.empty();
@@ -112,9 +113,10 @@ public class PokeDisguise {
                         .build(),
                 "pdisguise","pokedisguise", "disguise"
         );
+
         Task.builder().intervalTicks(1).execute(() -> {
             disguises.forEach((player, statue) -> {
-                if (!statue.isAlive()) {
+                if (((Entity) statue).isRemoved()) {
                     PokemonBase base = statue.getPokemon();
                     EnumStatueTextureType type = statue.getTextureType();
                     NBTTagCompound nbt = statue.getEntityData();
@@ -144,14 +146,12 @@ public class PokeDisguise {
                 statue.setPosition(pos.getX(), pos.getY(), pos.getZ());
                 statue.setRotation(((EntityPlayerMP)player).rotationYaw);
                 Vector3d speed = player.getVelocity().abs();
-                if (!statue.getEntityData().getBoolean("hidden"))
-                    player.offer(Keys.INVISIBLE, true);
                 statue.setIsFlying(player.get(Keys.IS_FLYING).orElse(false));
                 if (speed.getX() + speed.getZ() > .2) {
-                    if (!statue.getAnimation().equals("walk"))
-                        statue.setAnimation("walk");
+                    if (!statue.getAnimation().equals(AnimationType.WALK))
+                        statue.setAnimation(AnimationType.WALK);
                 } else
-                    statue.setAnimation("idle");
+                    statue.setAnimation(AnimationType.IDLE);
             });
         }).submit(this);
         Task.builder().execute(()-> {
@@ -162,20 +162,20 @@ public class PokeDisguise {
 
     @Listener
     public void onPlayerLeave(ClientConnectionEvent.Disconnect event) {
-        Optional.ofNullable(disguises.remove(event.getTargetEntity())).ifPresent(net.minecraft.entity.Entity::remove);
+        removeDisguise(event.getTargetEntity());
         service.save(event.getTargetEntity());
-        event.getTargetEntity().offer(Keys.VANISH, false);
     }
 
     @Listener
     public void onServerStopping(GameStoppingServerEvent event) {
         for (Player player : Sponge.getServer().getOnlinePlayers()) {
-            Optional.ofNullable(disguises.remove(player)).ifPresent(net.minecraft.entity.Entity::remove);
+            removeDisguise(player);
             service.save(player);
         }
     }
 
     public static void disguise(Player player, PokemonSpec spec) {
+        removeDisguise(player);
         EntityStatue statue = new EntityStatue((World)player.getWorld());
         statue.setPokemon(spec.create());
         spec.apply(statue.getEntityData());
@@ -198,7 +198,6 @@ public class PokeDisguise {
                 .onClick(TextActions.executeCallback(src-> {
                     disguises.get(player).getEntityData().putBoolean("hidden", true);
                     ((EntityPlayerMP) player).removeEntity(disguises.get(player));
-                    player.offer(Keys.INVISIBLE, false);
                     player.sendMessage(
                             Text.builder()
                                     .append(TextSerializers.FORMATTING_CODE.deserialize("&4&lPokeDisguise &7&l>&r Click &aHERE&r to unhide your disguise"))
@@ -213,5 +212,12 @@ public class PokeDisguise {
                 }))
                 .build());
         player.sendMessage(message.get());
+    }
+
+    public static void removeDisguise(Player player) {
+        Optional.ofNullable(disguises.remove(player)).ifPresent(entityStatue -> {
+            entityStatue.remove();
+            player.offer(Keys.VANISH, false);
+        });
     }
 }
