@@ -54,6 +54,7 @@ public class PokeDisguise {
     public void onServerPreInit(GamePreInitializationEvent event) {
         //Sponge.getServiceManager().setProvider(this, DisguiseRegistryService.class, new NBTDisguiseRegistryService());
         Sponge.getServiceManager().setProvider(this, DisguiseRegistryService.class, new PermissionDisguiseRegistryService());
+        Sponge.getServiceManager().setProvider(this, PlayerHideService.class, new VanishPlayerHideService());
     }
 
     @Listener
@@ -102,8 +103,7 @@ public class PokeDisguise {
                                         .executor(((src, args) -> {
                                             if (src instanceof Player) {
                                                 Optional.ofNullable(disguises.remove(src)).ifPresent(net.minecraft.entity.Entity::remove);
-                                                ((Player) src).offer(Keys.INVISIBLE, false);
-                                                ((Player) src).offer(Keys.VANISH, false);
+                                                Sponge.getServiceManager().provideUnchecked(PlayerHideService.class).show((Player) src);
                                             }
                                             return CommandResult.empty();
                                         }))
@@ -128,16 +128,7 @@ public class PokeDisguise {
                     for (String key : nbt.keySet()) {
                         statue.getEntityData().put(key, nbt.get(key));
                     }
-                    ((Entity)statue).setLocation(player.getLocation());
-                    try {
-                        Field dwBox = EntityStatue.class.getDeclaredField("dwBoundMode");
-                        dwBox.setAccessible(true);
-                        statue.getDataManager().set((DataParameter<Byte>) dwBox.get(null), (byte) EnumBoundingBoxMode.None.ordinal());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    statue.setAnimate(true);
-                    ((World) player.getWorld()).spawnEntity(statue);
+                    setupDisguise(statue, player);
                     if (hidden)
                         ((EntityPlayerMP)player).removeEntity(statue);
                     disguises.put(player, statue);
@@ -179,17 +170,7 @@ public class PokeDisguise {
         EntityStatue statue = new EntityStatue((World)player.getWorld());
         statue.setPokemon(spec.create());
         spec.apply(statue.getEntityData());
-        ((Entity)statue).setLocation(player.getLocation());
-        try {
-            Field dwBox = EntityStatue.class.getDeclaredField("dwBoundMode");
-            dwBox.setAccessible(true);
-            statue.getDataManager().set((DataParameter<Byte>) dwBox.get(null), (byte) EnumBoundingBoxMode.None.ordinal());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        statue.setAnimate(true);
-        player.offer(Keys.VANISH, true);
-        ((World) player.getWorld()).spawnEntity(statue);
+        setupDisguise(statue, player);
         Optional.ofNullable(disguises.put(player, statue)).ifPresent(net.minecraft.entity.Entity::remove);
         AtomicReference<Text> message = new AtomicReference<>();
         message.set(Text.builder()
@@ -217,7 +198,21 @@ public class PokeDisguise {
     public static void removeDisguise(Player player) {
         Optional.ofNullable(disguises.remove(player)).ifPresent(entityStatue -> {
             entityStatue.remove();
-            player.offer(Keys.VANISH, false);
+            Sponge.getServiceManager().provideUnchecked(PlayerHideService.class).show(player);
         });
+    }
+
+    private static void setupDisguise(EntityStatue statue, Player player) {
+        ((Entity)statue).setLocation(player.getLocation());
+        try {
+            Field dwBox = EntityStatue.class.getDeclaredField("dwBoundMode");
+            dwBox.setAccessible(true);
+            statue.getDataManager().set((DataParameter<Byte>) dwBox.get(null), (byte) EnumBoundingBoxMode.None.ordinal());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        statue.setAnimate(true);
+        Sponge.getServiceManager().provideUnchecked(PlayerHideService.class).hide(player);
+        ((World) player.getWorld()).spawnEntity(statue);
     }
 }
