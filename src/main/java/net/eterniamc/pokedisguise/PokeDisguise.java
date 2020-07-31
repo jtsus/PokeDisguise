@@ -12,6 +12,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.datasync.DataParameter;
 import net.minecraft.world.World;
+import org.lwjgl.Sys;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.command.CommandResult;
 import org.spongepowered.api.command.args.GenericArguments;
@@ -52,7 +53,6 @@ public class PokeDisguise {
 
     @Listener
     public void onServerPreInit(GamePreInitializationEvent event) {
-        //Sponge.getServiceManager().setProvider(this, DisguiseRegistryService.class, new NBTDisguiseRegistryService());
         Sponge.getServiceManager().setProvider(this, DisguiseRegistryService.class, new PermissionDisguiseRegistryService());
         Sponge.getServiceManager().setProvider(this, PlayerHideService.class, new VanishPlayerHideService());
     }
@@ -66,7 +66,7 @@ public class PokeDisguise {
                         .arguments(
                                 GenericArguments.playerOrSource(Text.of("player")),
                                 GenericArguments.withSuggestions(
-                                        GenericArguments.remainingRawJoinedStrings(Text.of("pokemon")),
+                                        GenericArguments.remainingJoinedStrings(Text.of("pokemon")),
                                         src-> service.getAllDisguises((Player) src)
                                 )
                         )
@@ -74,7 +74,8 @@ public class PokeDisguise {
                             PokemonSpec spec = new PokemonSpec(args.<String>getOne("pokemon").get());
                             Player player = src.hasPermission("pokedisguise.other") ? args.<Player>getOne("player").get() : (Player)src;
                             if (service.hasDisguise(player, args.<String>getOne("pokemon").get()) || src.hasPermission("pokedisguise.all")) {
-                                disguise(player, spec);
+                                System.out.println("Disguising " + player.getName() + " as " + args.<String>getOne("pokemon").get());
+                                disguise(player, spec, true);
                             } else
                                 player.sendMessage(Text.of(TextColors.RED, "You don't own this disguise!"));
                             return CommandResult.empty();
@@ -100,11 +101,10 @@ public class PokeDisguise {
                                 "give"
                         )
                         .child(CommandSpec.builder()
+                                .arguments(GenericArguments.playerOrSource(Text.of("player")))
                                         .executor(((src, args) -> {
-                                            if (src instanceof Player) {
-                                                Optional.ofNullable(disguises.remove(src)).ifPresent(net.minecraft.entity.Entity::remove);
-                                                Sponge.getServiceManager().provideUnchecked(PlayerHideService.class).show((Player) src);
-                                            }
+                                            Optional.ofNullable(disguises.remove(args.getOne("player").get())).ifPresent(net.minecraft.entity.Entity::remove);
+                                            Sponge.getServiceManager().provideUnchecked(PlayerHideService.class).show(args.<Player>getOne("player").get());
                                             return CommandResult.empty();
                                         }))
                                         .build(),
@@ -165,34 +165,40 @@ public class PokeDisguise {
         }
     }
 
-    public static void disguise(Player player, PokemonSpec spec) {
+    public static void disguise(Player player, PokemonSpec spec, boolean sendMessage) {
         removeDisguise(player);
         EntityStatue statue = new EntityStatue((World)player.getWorld());
         statue.setPokemon(spec.create());
         spec.apply(statue.getEntityData());
         setupDisguise(statue, player);
         Optional.ofNullable(disguises.put(player, statue)).ifPresent(net.minecraft.entity.Entity::remove);
-        AtomicReference<Text> message = new AtomicReference<>();
-        message.set(Text.builder()
-                .append(TextSerializers.FORMATTING_CODE.deserialize("&4&lPokeDisguise &7&l>&r Click &aHERE&r to hide your disguise"))
-                .onHover(TextActions.showText(Text.of(TextColors.WHITE, "Hiding your disguise makes it so others can see it but you can't")))
-                .onClick(TextActions.executeCallback(src-> {
-                    disguises.get(player).getEntityData().putBoolean("hidden", true);
-                    ((EntityPlayerMP) player).removeEntity(disguises.get(player));
-                    player.sendMessage(
-                            Text.builder()
-                                    .append(TextSerializers.FORMATTING_CODE.deserialize("&4&lPokeDisguise &7&l>&r Click &aHERE&r to unhide your disguise"))
-                                    .onHover(TextActions.showText(Text.of(TextColors.WHITE, "Unhiding your disguise makes it so you can see it")))
-                                    .onClick(TextActions.executeCallback(src1-> {
-                                        disguises.get(player).getEntityData().putBoolean("hidden", false);
-                                        disguises.get(player).remove();
-                                        player.sendMessage(message.get());
-                                    }))
-                                    .build()
-                    );
-                }))
-                .build());
-        player.sendMessage(message.get());
+        if (sendMessage) {
+            AtomicReference<Text> message = new AtomicReference<>();
+            message.set(Text.builder()
+                    .append(TextSerializers.FORMATTING_CODE.deserialize("&4&lPokeDisguise &7&l>&r Click &aHERE&r to hide your disguise"))
+                    .onHover(TextActions.showText(Text.of(TextColors.WHITE, "Hiding your disguise makes it so others can see it but you can't")))
+                    .onClick(TextActions.executeCallback(src -> {
+                        disguises.get(player).getEntityData().putBoolean("hidden", true);
+                        ((EntityPlayerMP) player).removeEntity(disguises.get(player));
+                        player.sendMessage(
+                                Text.builder()
+                                        .append(TextSerializers.FORMATTING_CODE.deserialize("&4&lPokeDisguise &7&l>&r Click &aHERE&r to unhide your disguise"))
+                                        .onHover(TextActions.showText(Text.of(TextColors.WHITE, "Unhiding your disguise makes it so you can see it")))
+                                        .onClick(TextActions.executeCallback(src1 -> {
+                                            disguises.get(player).getEntityData().putBoolean("hidden", false);
+                                            disguises.get(player).remove();
+                                            player.sendMessage(message.get());
+                                        }))
+                                        .build()
+                        );
+                    }))
+                    .build());
+            player.sendMessage(message.get());
+        }
+    }
+
+    public static boolean isDisguised(Player player) {
+        return disguises.containsKey(player);
     }
 
     public static void removeDisguise(Player player) {
